@@ -11,6 +11,7 @@ import {
   getHistoryTrips,
   getTripExpenses,
   getTripStats,
+  getTrips,
   createTrip,
   endTrip,
   addExpense,
@@ -85,7 +86,10 @@ export default function App() {
           <CreateTripView onCreated={() => { refresh(); goHome() }} />
         )}
         {page === 'add-expense' && (
-          <AddExpenseView onSaved={() => { refresh(); goHome() }} />
+          <AddExpenseView
+            onSaved={() => { refresh(); goHome() }}
+            tripId={selectedTrip && !selectedTrip.isActive ? selectedTrip.id : undefined}
+          />
         )}
         {page === 'trip-detail' && selectedTrip && (
           <TripDetailView
@@ -93,6 +97,7 @@ export default function App() {
             onDeleted={() => { refresh(); goHome() }}
             onEndTrip={() => { if (confirm('确定要结束这段旅程吗？')) { endTrip(selectedTrip.id); refresh(); goHome() } }}
             onSettlement={() => setPage('settlement')}
+            onAddExpense={() => setPage('add-expense')}
           />
         )}
         {page === 'history' && (
@@ -293,14 +298,15 @@ function CreateTripView({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-function AddExpenseView({ onSaved }: { onSaved: () => void }) {
+function AddExpenseView({ onSaved, tripId }: { onSaved: () => void; tripId?: string }) {
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState<ExpenseCategory>('food')
   const [note, setNote] = useState('')
   const [calcValue, setCalcValue] = useState('')
   const [showCalc, setShowCalc] = useState(false)
   const [paidBy, setPaidBy] = useState('我')
-  const trip = getActiveTrip()
+  // 如果指定了tripId就用它，否则用activeTrip
+  const trip = tripId ? getTrips().find(t => t.id === tripId) : getActiveTrip()
 
   // 同行人列表
   const members = ['我', ...(trip?.companions || [])]
@@ -452,12 +458,14 @@ function TripDetailView({
   trip,
   onDeleted,
   onEndTrip,
-  onSettlement
+  onSettlement,
+  onAddExpense
 }: {
   trip: Trip
   onDeleted: () => void
   onEndTrip: () => void
   onSettlement: () => void
+  onAddExpense: () => void
 }) {
   const expenses = getTripExpenses(trip.id)
   const stats = getTripStats(trip.id)
@@ -480,6 +488,7 @@ function TripDetailView({
                 <MapPin className="w-4 h-4" />
                 <span>{trip.destination}</span>
                 {isActive && <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded text-xs">进行中</span>}
+                {!isActive && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">已结束</span>}
               </div>
               <div className="text-2xl font-bold mt-1">
                 {formatDate(trip.startDate)} - {trip.endDate ? formatDate(trip.endDate!) : '至今'}
@@ -527,8 +536,11 @@ function TripDetailView({
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-base">所有记录 ({stats.count})</CardTitle>
+          <button onClick={onAddExpense} className="text-sm text-blue-600 flex items-center gap-1">
+            <Plus className="w-4 h-4" /> 添加
+          </button>
         </CardHeader>
         <CardContent>
           {expenses.length === 0 ? (
@@ -552,11 +564,9 @@ function TripDetailView({
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-sm font-medium">{formatCurrency(expense.amount)}</div>
-                    {isActive && (
-                      <button onClick={() => handleDelete(expense.id)} className="p-1 text-gray-400 hover:text-red-500">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button onClick={() => handleDelete(expense.id)} className="p-1 text-gray-400 hover:text-red-500">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}
