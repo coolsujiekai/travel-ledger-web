@@ -23,6 +23,7 @@ export interface Trip {
   endDate?: number
   isActive: boolean
   createdAt: number
+  companions: string[]  // 同行人列表，如 ["小明", "小红"]
 }
 
 export interface Expense {
@@ -34,6 +35,7 @@ export interface Expense {
   spentAt: number
   createdAt: number
   tripId: string
+  paidBy: string  // 付款人，默认"我"
 }
 
 export interface AppData {

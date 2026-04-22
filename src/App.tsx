@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Clock, MapPin, ArrowLeft, ArrowRight, Trash2, X, Calculator } from 'lucide-react'
+import { Plus, Clock, MapPin, ArrowLeft, ArrowRight, Trash2, X, Calculator, Users } from 'lucide-react'
 import { Button } from './components/ui/Button'
 import { Card, CardHeader, CardTitle, CardContent } from './components/ui/Card'
 import { Input } from './components/ui/Input'
@@ -15,10 +15,11 @@ import {
   endTrip,
   addExpense,
   deleteExpense,
-  deleteTrip
+  deleteTrip,
+  calculateSettlement
 } from './data/store'
 
-type Page = 'home' | 'create-trip' | 'add-expense' | 'trip-detail' | 'history'
+type Page = 'home' | 'create-trip' | 'add-expense' | 'trip-detail' | 'history' | 'settlement'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
@@ -91,6 +92,7 @@ export default function App() {
             trip={selectedTrip}
             onDeleted={() => { refresh(); goHome() }}
             onEndTrip={() => { if (confirm('确定要结束这段旅程吗？')) { endTrip(selectedTrip.id); refresh(); goHome() } }}
+            onSettlement={() => setPage('settlement')}
           />
         )}
         {page === 'history' && (
@@ -98,6 +100,11 @@ export default function App() {
             trips={historyTrips}
             onSelect={(trip) => { setSelectedTrip(trip); setPage('trip-detail') }}
             onDeleted={() => refresh()}
+          />
+        )}
+        {page === 'settlement' && selectedTrip && (
+          <SettlementView
+            trip={selectedTrip}
           />
         )}
       </main>
@@ -230,10 +237,16 @@ function ActiveTripView({
 
 function CreateTripView({ onCreated }: { onCreated: () => void }) {
   const [destination, setDestination] = useState('')
+  const [companions, setCompanions] = useState('')
 
   const handleSubmit = () => {
     if (!destination.trim()) return
-    createTrip(destination.trim(), Date.now())
+    // 解析同行人：逗号或顿号分隔
+    const companionsList = companions
+      .split(/[,，]/)
+      .map(c => c.trim())
+      .filter(c => c.length > 0)
+    createTrip(destination.trim(), Date.now(), companionsList)
     onCreated()
   }
 
@@ -258,6 +271,18 @@ function CreateTripView({ onCreated }: { onCreated: () => void }) {
                 className="text-lg"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                同行人 <span className="text-gray-400 font-normal">(可选)</span>
+              </label>
+              <Input
+                placeholder="例如：小明、小红"
+                value={companions}
+                onChange={e => setCompanions(e.target.value)}
+                className="text-base"
+              />
+              <p className="text-xs text-gray-400 mt-1">多人用逗号分隔</p>
+            </div>
             <Button onClick={handleSubmit} size="lg" className="w-full" disabled={!destination.trim()}>
               开始旅程 ✈️
             </Button>
@@ -274,7 +299,11 @@ function AddExpenseView({ onSaved }: { onSaved: () => void }) {
   const [note, setNote] = useState('')
   const [calcValue, setCalcValue] = useState('')
   const [showCalc, setShowCalc] = useState(false)
+  const [paidBy, setPaidBy] = useState('我')
   const trip = getActiveTrip()
+
+  // 同行人列表
+  const members = ['我', ...(trip?.companions || [])]
 
   const handleCalc = (op: string) => {
     if (op === 'C') {
@@ -304,7 +333,8 @@ function AddExpenseView({ onSaved }: { onSaved: () => void }) {
       category,
       note: note.trim() || undefined,
       spentAt: Date.now(),
-      tripId: trip.id
+      tripId: trip.id,
+      paidBy
     })
     onSaved()
   }
@@ -381,6 +411,25 @@ function AddExpenseView({ onSaved }: { onSaved: () => void }) {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <span className="flex items-center gap-1">
+                  <Users className="w-4 h-4" /> 付款人
+                </span>
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {members.map(member => (
+                  <button
+                    key={member}
+                    onClick={() => setPaidBy(member)}
+                    className={`px-4 py-2 rounded-lg border-2 transition-colors ${paidBy === member ? 'border-black bg-gray-100 font-medium' : 'border-gray-200'}`}
+                  >
+                    {member}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">备注（可选）</label>
               <Input
                 placeholder="例如：酒店早餐、地铁票"
@@ -402,11 +451,13 @@ function AddExpenseView({ onSaved }: { onSaved: () => void }) {
 function TripDetailView({
   trip,
   onDeleted,
-  onEndTrip
+  onEndTrip,
+  onSettlement
 }: {
   trip: Trip
   onDeleted: () => void
   onEndTrip: () => void
+  onSettlement: () => void
 }) {
   const expenses = getTripExpenses(trip.id)
   const stats = getTripStats(trip.id)
@@ -438,6 +489,12 @@ function TripDetailView({
             </div>
             <div className="text-4xl">✈️</div>
           </div>
+          {trip.companions.length > 0 && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
+              <Users className="w-4 h-4" />
+              <span>同行：{trip.companions.join('、')}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -484,7 +541,12 @@ function TripDetailView({
                     <span className="text-lg">{categoryIcons[expense.category]}</span>
                     <div>
                       <div className="text-sm font-medium">{categoryLabels[expense.category]}</div>
-                      <div className="text-xs text-gray-400">{formatDate(expense.spentAt)}</div>
+                      <div className="text-xs text-gray-400 flex items-center gap-2">
+                        {formatDate(expense.spentAt)}
+                        {expense.paidBy !== '我' && (
+                          <span className="text-blue-600">· {expense.paidBy}付</span>
+                        )}
+                      </div>
                       {expense.note && <div className="text-xs text-gray-400">{expense.note}</div>}
                     </div>
                   </div>
@@ -502,6 +564,12 @@ function TripDetailView({
           )}
         </CardContent>
       </Card>
+
+      {!isActive && trip.companions.length > 0 && (
+        <Button onClick={onSettlement} size="lg" className="w-full gap-2">
+          <Users className="w-5 h-5" /> 查看分摊结算
+        </Button>
+      )}
 
       {isActive && (
         <Button onClick={onEndTrip} variant="outline" size="lg" className="w-full">
@@ -571,6 +639,104 @@ function HistoryView({ trips, onSelect, onDeleted }: { trips: Trip[]; onSelect: 
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+function SettlementView({ trip }: { trip: Trip }) {
+  const settlement = calculateSettlement(trip.id)
+
+  return (
+    <div className="p-4 space-y-4">
+      <Card>
+        <CardContent className="p-4 text-center">
+          <div className="text-5xl mb-2">🤝</div>
+          <h2 className="text-xl font-bold">分摊结算</h2>
+          <p className="text-gray-500 text-sm mt-1">{trip.destination}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">总支出</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-3xl font-bold">{formatCurrency(settlement.total)}</div>
+          <div className="text-sm text-gray-400">
+            {settlement.members.length}人，平均每人 {formatCurrency(settlement.perPerson)}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">每人应付 / 已付</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {settlement.members.map(member => (
+              <div key={member.name} className="flex items-center justify-between">
+                <div>
+                  <span className="font-medium">{member.name}</span>
+                  {member.balance > 0.01 && (
+                    <span className="ml-2 text-green-600 text-sm">多付 {formatCurrency(member.balance)}</span>
+                  )}
+                  {member.balance < -0.01 && (
+                    <span className="ml-2 text-red-600 text-sm">欠 {formatCurrency(-member.balance)}</span>
+                  )}
+                  {Math.abs(member.balance) <= 0.01 && (
+                    <span className="ml-2 text-gray-400 text-sm">已结清</span>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-gray-400">已付 {formatCurrency(member.paid)}</div>
+                  <div className="text-sm">应付 {formatCurrency(member.owed)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {settlement.settlements.length > 0 && (
+        <Card className="border-2 border-blue-100">
+          <CardHeader>
+            <CardTitle className="text-base text-blue-600">💸 结算建议</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {settlement.settlements.map((s, i) => (
+                <div key={i} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{s.from}</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium">{s.to}</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-600">{formatCurrency(s.amount)}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {settlement.settlements.length === 0 && settlement.members.length > 1 && (
+        <Card>
+          <CardContent className="p-4 text-center text-gray-500">
+            <div className="text-4xl mb-2">✅</div>
+            <p>大家已付金额相等，无需转账</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {settlement.members.length <= 1 && (
+        <Card>
+          <CardContent className="p-4 text-center text-gray-500">
+            <div className="text-4xl mb-2">ℹ️</div>
+            <p>没有同行人，无需分摊</p>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
