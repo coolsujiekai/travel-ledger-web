@@ -49,20 +49,32 @@ export default function App() {
 
   const goHome = () => {
     setPage('home')
+    setSelectedTrip(undefined)
     refresh()
+  }
+
+  const goBack = () => {
+    // 如果是在历史行程的详情页或结算页，返回历史页面
+    if (selectedTrip && !selectedTrip.isActive && (page === 'trip-detail' || page === 'settlement' || page === 'add-expense')) {
+      setPage('history')
+      refresh()
+    } else {
+      setPage('home')
+      refresh()
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-black text-white px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
         {page !== 'home' && (
-          <button onClick={goHome} className="p-1">
+          <button onClick={goBack} className="p-1">
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
         <h1 className="text-lg font-bold flex-1">Travel Ledger</h1>
         {page !== 'home' && (
-          <button onClick={goHome} className="p-1 text-gray-400">
+          <button onClick={goBack} className="p-1 text-gray-400">
             <X className="w-5 h-5" />
           </button>
         )}
@@ -87,7 +99,7 @@ export default function App() {
         )}
         {page === 'add-expense' && (
           <AddExpenseView
-            onSaved={() => { refresh(); goHome() }}
+            onSaved={() => { refresh() }}
             tripId={selectedTrip && !selectedTrip.isActive ? selectedTrip.id : undefined}
           />
         )}
@@ -342,6 +354,11 @@ function AddExpenseView({ onSaved, tripId }: { onSaved: () => void; tripId?: str
       tripId: trip.id,
       paidBy
     })
+    // 重置表单
+    setAmount('')
+    setCalcValue('')
+    setNote('')
+    setCategory('food')
     onSaved()
   }
 
